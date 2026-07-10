@@ -1,0 +1,36 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: episciences-oai-web
+    restart: unless-stopped
+    environment:
+      # Disable FrankenPHP internal HTTPS since Traefik handles TLS
+      SERVER_NAME: :80
+      APP_ENV: dev
+      APP_SECRET: 5b46e3820be1e7eb68b37c1527ab0d2b
+      SOLR_URL: "http://episciences-solr:8983/solr"
+    volumes:
+      - .:/app
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - epi-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.episciences-oai.rule=Host(`oaing-dev.episciences.org`)"
+      - "traefik.http.routers.episciences-oai.entrypoints=web"
+      - "traefik.http.routers.episciences-oai-secure.rule=Host(`oaing-dev.episciences.org`)"
+      - "traefik.http.routers.episciences-oai-secure.entrypoints=websecure"
+      - "traefik.http.routers.episciences-oai-secure.tls=true"
+      - "traefik.http.services.episciences-oai.loadbalancer.server.port=80"
+
+networks:
+  epi-network:
+    name: epi-network
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
