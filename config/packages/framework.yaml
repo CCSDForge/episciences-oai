@@ -2,8 +2,13 @@
 framework:
     secret: '%env(APP_SECRET)%'
 
-    # Note that the session will be started ONLY if you read or write from it.
-    session: true
+    # Stateless OAI-PMH service: no session, avoids Set-Cookie headers.
+    session: false
+
+    # Trust the reverse proxy (Traefik) so baseURL reflects the public scheme/host.
+    # Set TRUSTED_PROXIES=private_ranges when running behind the shared proxy.
+    trusted_proxies: '%env(default::TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port']
 
     #esi: true
     #fragments: true
@@ -11,5 +16,3 @@ framework:
 when@test:
     framework:
         test: true
-        session:
-            storage_factory_id: session.storage.factory.mock_file

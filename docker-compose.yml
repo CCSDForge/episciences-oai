@@ -9,8 +9,9 @@ services:
       # Disable FrankenPHP internal HTTPS since Traefik handles TLS
       SERVER_NAME: :80
       APP_ENV: dev
-      APP_SECRET: 5b46e3820be1e7eb68b37c1527ab0d2b
       SOLR_URL: "http://episciences-solr:8983/solr"
+      # Traefik reaches the container over the private Docker network
+      TRUSTED_PROXIES: "private_ranges"
     volumes:
       - .:/app
       - caddy_data:/data
