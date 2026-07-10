@@ -60,4 +60,4 @@ endif
 cache-clear: ## Clear Symfony cache and the shared var/share cache
 	$(EXEC_PHP) php bin/console cache:clear
 	$(EXEC_PHP) php bin/console cache:pool:clear cache.app
-	rm -rf var/share/dev/pools var/share/test/pools
+	$(EXEC_PHP) rm -rf var/share/dev/pools var/share/test/pools

@@ -4,17 +4,29 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use GuzzleHttp\Client;
 use Psr\Log\LoggerInterface;
 
 class EpisciencesApiClient
 {
     private string $apiUrl;
     private LoggerInterface $logger;
+    private bool $verifySsl;
+    private string $apiHost;
+    private ?\GuzzleHttp\ClientInterface $httpClient;
 
-    public function __construct(string $episciencesApiUrl, LoggerInterface $logger)
-    {
+    public function __construct(
+        string $episciencesApiUrl,
+        LoggerInterface $logger,
+        bool $episciencesApiVerifySsl,
+        string $episciencesApiHost,
+        ?\GuzzleHttp\ClientInterface $httpClient = null
+    ) {
         $this->apiUrl = $episciencesApiUrl;
         $this->logger = $logger;
+        $this->verifySsl = $episciencesApiVerifySsl;
+        $this->apiHost = $episciencesApiHost;
+        $this->httpClient = $httpClient;
     }
 
     /**
@@ -26,13 +38,24 @@ class EpisciencesApiClient
     public function fetchJournalMetadata(string $code): ?array
     {
         $url = rtrim($this->apiUrl, '/') . '/api/journals/' . urlencode($code);
-        $client = new \GuzzleHttp\Client([
-            'timeout' => 2.0,
-            'headers' => [
+
+        $client = $this->httpClient;
+        if ($client === null) {
+            $headers = [
                 'Accept' => 'application/ld+json',
                 'User-Agent' => 'Episciences-OAI-Service',
-            ]
-        ]);
+                'X-Forwarded-Proto' => 'https',
+            ];
+            if ($this->apiHost !== '') {
+                $headers['Host'] = $this->apiHost;
+            }
+
+            $client = new Client([
+                'timeout' => 2.0,
+                'verify' => $this->verifySsl,
+                'headers' => $headers,
+            ]);
+        }
 
         $result = null;
 
