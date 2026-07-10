@@ -13,17 +13,17 @@
 
 <xsl:template name="style">
 :root {
-    --primary-color: #2c3e50;
-    --secondary-color: #34495e;
-    --accent-color: #3498db;
-    --bg-color: #f8f9fa;
+    --primary-color: #171775;       /* st7 - dark navy blue */
+    --secondary-color: #143CAA;     /* st6 - dark blue */
+    --accent-color: #1164B4;        /* st5 - blue */
+    --bg-color: #f4f7fa;            /* soft blue-gray background */
     --card-bg: #ffffff;
-    --border-color: #dee2e6;
+    --border-color: #d0dbe5;        /* soft border blue-gray */
     --text-color: #212529;
-    --key-bg: #e9ecef;
-    --link-color: #0056b3;
-    --error-bg: #f8d7da;
-    --error-text: #721c24;
+    --key-bg: #eaf1f6;              /* very soft blue-gray for keys */
+    --link-color: #1164B4;          /* st5 - royal blue */
+    --error-bg: #fdf2f2;
+    --error-text: #9b1c1c;
 }
 
 body { 
@@ -40,9 +40,21 @@ body {
     margin: 0 auto;
 }
 
+a {
+    color: var(--link-color);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+a:hover {
+    text-decoration: underline;
+    color: var(--primary-color);
+}
+
 header {
     margin-bottom: 2rem;
-    border-bottom: 3px solid var(--accent-color);
+    border-bottom: 4px solid;
+    border-image: linear-gradient(to right, #00bebe, #0fa0b9, #0a8fbe, #1164b4, #143caa, #171775) 1;
     padding-bottom: 1rem;
 }
 
@@ -66,12 +78,14 @@ h3 {
 }
 
 .intro {
-    background: #e7f3fe;
-    padding: 1rem;
-    border-radius: 4px;
-    border-left: 5px solid var(--accent-color);
+    background: #e6f6f9;            /* very light tint of st2 (#00BEBE) / st3 (#0FA0B9) */
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    border-left: 5px solid #0fa0b9; /* st3 */
     margin-bottom: 2rem;
     font-size: 0.9rem;
+    color: var(--primary-color);
+    box-shadow: 0 2px 4px rgba(15, 160, 185, 0.04);
 }
 
 nav {
@@ -80,14 +94,14 @@ nav {
 
 ul.quicklinks {
     list-style: none;
-    padding: 0;
+    padding: 0.75rem;
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 0.5rem;
     background: var(--card-bg);
-    padding: 1rem;
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px rgba(23, 23, 117, 0.04);
 }
 
 ul.quicklinks li a {
@@ -95,12 +109,13 @@ ul.quicklinks li a {
     color: var(--link-color);
     font-weight: 600;
     padding: 0.5rem 1rem;
-    border-radius: 4px;
-    transition: background 0.2s;
+    border-radius: 6px;
+    transition: background 0.2s, color 0.2s;
 }
 
 ul.quicklinks li a:hover {
-    background: #e9ecef;
+    background: var(--key-bg);
+    color: var(--primary-color);
 }
 
 table.values {
@@ -110,7 +125,7 @@ table.values {
     background: var(--card-bg);
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 4px rgba(23, 23, 117, 0.04);
 }
 
 table.values td {
@@ -135,7 +150,7 @@ table.values td.key {
     border-radius: 8px;
     margin-bottom: 2rem;
     padding: 1.5rem;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 6px rgba(23, 23, 117, 0.03);
 }
 
 .oaiRecordTitle {
@@ -156,11 +171,11 @@ table.values td.key {
     text-decoration: none;
     font-size: 0.85rem;
     margin-left: 0.5rem;
-    transition: opacity 0.2s;
+    transition: background-color 0.2s;
 }
 
 .btn-link:hover {
-    opacity: 0.9;
+    background: var(--secondary-color);
 }
 
 .error-box {
@@ -169,7 +184,7 @@ table.values td.key {
     padding: 1rem;
     border-radius: 8px;
     margin: 1rem 0;
-    border: 1px solid #f5c6cb;
+    border: 1px solid #f5c2c7;
 }
 
 .metadata {
@@ -185,18 +200,18 @@ table.values td.key {
 .xmlSource {
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.85rem;
-    background: #272822;
-    color: #f8f8f2;
+    background: #171725;            /* dark navy matching st7 */
+    color: #e2e8f0;
     padding: 1.5rem;
     border-radius: 8px;
     overflow-x: auto;
 }
 
 .xmlBlock { padding-left: 1.5rem; }
-.xmlTagName { color: #f92672; font-weight: bold; }
-.xmlAttrName { color: #a6e22e; }
+.xmlTagName { color: #00bebe; font-weight: bold; } /* st2 - cyan */
+.xmlAttrName { color: #0fa0b9; } /* st3 - blue-green */
 .xmlAttrValue { color: #e6db74; }
-.xmlText { color: #f8f8f2; }
+.xmlText { color: #e2e8f0; }
 
 footer {
     margin-top: 4rem;
@@ -204,7 +219,7 @@ footer {
     border-top: 1px solid var(--border-color);
     font-size: 0.8rem;
     text-align: center;
-    color: #6c757d;
+    color: #4c546a;                 /* accessible slate-gray */
 }
 
 @media (max-width: 600px) {
@@ -584,7 +599,7 @@ footer {
          <tr><td class="key">Token</td>
          <td class="value">
             <code><xsl:value-of select="."/></code>
-            <span style="margin-left: 1rem; color: #666;">
+            <span style="margin-left: 1rem; color: #5a6275;">
                 (<xsl:value-of select="@cursor"/> / <xsl:value-of select="@completeListSize"/>)
             </span>
             <a class="btn-link" href="?verb={/oai:OAI-PMH/oai:request/@verb}&amp;resumptionToken={.}">Resume harvesting</a>
