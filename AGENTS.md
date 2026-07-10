@@ -116,3 +116,6 @@ Follow the **Conventional Commits** specification (`type(scope): description`):
 * **Strict Types**: Always begin every PHP file with `declare(strict_types=1);` right after the opening tag.
 * **Static Analysis**: Run `make phpstan` before committing to ensure there are no errors at level 6.
 * **Unit Tests**: Ensure all tests pass with `make test` before submitting changes.
+
+### 4. Git Staging Practices
+* **No global staging**: Do NOT use global staging commands such as `git add .` or `git add -A`. Always add changed or new files individually or with precise paths to avoid staging secrets, logs, or unverified temporary files.
