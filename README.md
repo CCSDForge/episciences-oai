@@ -11,7 +11,7 @@ To achieve maximum performance and isolate the service from the main relational 
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 *   **Solr-based Serving**: Serves documents directly from the Solr index (`doc_dc`, `doc_tei`, `doc_openaire`, `doc_crossref`) without any SQL queries.
 *   **Dynamic Sets Metadata**: Fetches detailed journal configurations (descriptions, publisher, ISSN) directly from the Episciences API for `ListSets` descriptions and caches them for high performance.
@@ -20,7 +20,7 @@ To achieve maximum performance and isolate the service from the main relational 
 
 ---
 
-## 🛠️ Requirements
+## Requirements
 
 *   **PHP** >= 8.4
 *   **Docker** & **Docker Compose**
@@ -28,14 +28,10 @@ To achieve maximum performance and isolate the service from the main relational 
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 ### 1. Clone the Repository
 Clone the repository alongside the other episciences repositories:
-```bash
-git clone https://github.com/rtournoy/episciences-oai.git
-cd episciences-oai
-```
 
 ### 2. Configure Environment
 Create your local environment overrides from the templates:
@@ -50,11 +46,18 @@ This project runs using **FrankenPHP** on the shared `epi-network` reverse-proxi
 ```bash
 docker compose up -d
 ```
+
+> [!NOTE]
+> To access the application locally, you must map the domain `oaing-dev.episciences.org` to your local machine. Add the following line to your `/etc/hosts` file:
+> ```text
+> 127.0.0.1 oaing-dev.episciences.org
+> ```
+
 The OAI-PMH endpoint will be accessible locally via [https://oaing-dev.episciences.org/](https://oaing-dev.episciences.org/).
 
 ---
 
-## 📖 Local Development commands
+## Local Development commands
 
 We provide a self-documented `Makefile` to simplify local development:
 
@@ -80,7 +83,7 @@ make cache-clear
 
 ---
 
-## 🧪 CI / CD & Tests
+## CI / CD & Tests
 
 We run continuous integration using **GitHub Actions**. To ensure that your modifications do not break functionality, run tests and static analysis before pushing:
 
@@ -95,24 +98,10 @@ We run continuous integration using **GitHub Actions**. To ensure that your modi
 
 ---
 
-## 🚢 Deployment
+## Dev Deployment
 
 The service is packaged as a lightweight Docker image built on top of [FrankenPHP](https://frankenphp.dev/):
 - The deployment is defined in the [docker-compose.yml](./docker-compose.yml) file.
 - It hooks into the shared Traefik instance from [episciences-infrastructure](../episciences-infrastructure) and exposes the endpoint domain `oaing-dev.episciences.org` (in development) or `oai.episciences.org` (in production).
 - Production build configures PHP Opcache, preloading, and non-debug runtime optimizations.
 
----
-
-## 🤝 Contribution Guidelines
-
-1.  **Language**: All code comments, docblocks, logs, commit messages, and documentation must be written in **English**.
-2.  **Strict Types**: Every PHP file must declare strict types at the very beginning of the file:
-    ```php
-    <?php
-    declare(strict_types=1);
-    ```
-3.  **Commit Messages**: Follow the **Conventional Commits** specification (`type(scope): description`). Example:
-    ```bash
-    git commit -m "feat(oai): add support for ListSets using Solr facets"
-    ```
