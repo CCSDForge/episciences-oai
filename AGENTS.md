@@ -35,7 +35,7 @@ Instead of connecting directly to the main relational database to load papers, a
 * **[services.yaml](./config/services.yaml)**: Wire `Solarium\Client` using the factory and autowiring.
 
 ### OAI-PMH Controller
-* **[OaiPmhController.php](./src/Controller/OaiPmhController.php)**: Provides the `/oai` endpoint handling both GET and POST requests.
+* **[OaiPmhController.php](./src/Controller/OaiPmhController.php)**: Provides the OAI-PMH endpoint at the root path `/` (route `oai_pmh_root`), handling both GET and POST requests. The XSL stylesheet is served at `/oai/xsl` (with `/xsl` as legacy alias).
   * *Symfony 8.1 Note*: The controller uses `Symfony\Component\Routing\Attribute\Route` (the `Annotation` namespace has been removed).
 
 ---
@@ -89,8 +89,8 @@ As the core OAI-PMH component has been migrated, next steps focus on production 
 * **Check routes**: `docker compose exec web bin/console debug:router`
 * **Run tests**: `make test`
 * **Run PHPStan**: `make phpstan`
-* **Verify OAI Identify**: `curl -i "http://localhost/oai?verb=Identify"`
-* **Verify OAI ListRecords**: `curl -i "http://localhost/oai?verb=ListRecords&metadataPrefix=oai_dc"`
+* **Verify OAI Identify**: `curl -i "http://localhost/?verb=Identify"`
+* **Verify OAI ListRecords**: `curl -i "http://localhost/?verb=ListRecords&metadataPrefix=oai_dc"`
 
 ---
 
