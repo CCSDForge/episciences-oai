@@ -41,6 +41,12 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist --optimize-autoloader
 
+      - name: Audit Composer dependencies
+        run: composer audit
+
+      - name: Lint service container
+        run: php bin/console lint:container --env=test
+
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse --memory-limit=1G
 
