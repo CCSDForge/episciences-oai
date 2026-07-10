@@ -14,6 +14,7 @@ To achieve maximum performance and isolate the service from the main relational 
 ## 🚀 Key Features
 
 *   **Solr-based Serving**: Serves documents directly from the Solr index (`doc_dc`, `doc_tei`, `doc_openaire`, `doc_crossref`) without any SQL queries.
+*   **Dynamic Sets Metadata**: Fetches detailed journal configurations (descriptions, publisher, ISSN) directly from the Episciences API for `ListSets` descriptions and caches them for high performance.
 *   **Pagination**: Full support for `resumptionToken` pagination utilizing Solr query cursors (`cursorMark`) and Symfony Cache.
 *   **XML validation**: Automatic namespace injection and XML sanitization to prevent duplication in payloads.
 
@@ -41,7 +42,8 @@ Create your local environment overrides from the templates:
 ```bash
 cp .env .env.local
 ```
-Make sure `SOLR_URL` targets the correct Solr instance (default in local dev environment is `http://episciences-solr:8983/solr`).
+* Make sure `SOLR_URL` targets the correct Solr instance (default in local dev environment is `http://episciences-solr:8983/solr`).
+* Make sure `EPISCIENCES_API_URL` targets the correct API instance (default is `https://api-dev.episciences.org/`). For local development, `EPISCIENCES_API_HOST` and `EPISCIENCES_API_VERIFY_SSL` are also available to configure routing and skip SSL verification.
 
 ### 3. Start the Development Server
 This project runs using **FrankenPHP** on the shared `epi-network` reverse-proxied by Traefik.
@@ -71,6 +73,9 @@ make phpstan
 
 # Run PHPStan on a specific file
 make phpstan target=src/Controller/OaiPmhController.php
+
+# Clear Symfony cache and the shared var/share cache
+make cache-clear
 ```
 
 ---
