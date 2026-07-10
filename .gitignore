@@ -22,3 +22,4 @@ phpstan.neon
 /.idea/
 .DS_Store
 ###< local/custom ###
+/tmp/
