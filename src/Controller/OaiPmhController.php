@@ -16,15 +16,19 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
+use App\Enum\MetadataFormat;
 use App\Exception\OaiException;
 use App\Service\EpisciencesApiClient;
 use App\Service\OaiQueryHelper;
 use DOMDocument;
 use DOMElement;
-use Exception;
+use Throwable;
 
 use Solarium\Core\Query\DocumentInterface;
 
+/**
+ * @phpstan-import-type ParsedListParams from OaiQueryHelper
+ */
 class OaiPmhController extends AbstractController
 {
     private const string ERROR_RECORD_NOT_FOUND = 'Record does not exist.';
@@ -32,7 +36,6 @@ class OaiPmhController extends AbstractController
     private const string NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
     private const string DATE_FORMAT_ISO = 'Y-m-d\TH:i:s\Z';
     private const string CONTENT_TYPE_XML = 'text/xml; charset=utf-8';
-    private const string NS_CROSSREF = 'http://www.crossref.org/schema/5.3.1';
 
     private Client $solrClient;
     private CacheItemPoolInterface $cache;
@@ -120,8 +123,15 @@ class OaiPmhController extends AbstractController
                 ]);
             } catch (OaiException $e) {
                 $response = $this->createErrorResponse($xml, $e->oaiCode, $e->getMessage());
-            } catch (Exception $e) {
-                $response = $this->createErrorResponse($xml, 'badArgument', $e->getMessage());
+            } catch (Throwable $e) {
+                $this->logger->error(
+                    sprintf('Unhandled error while processing OAI-PMH verb %s: %s', $verb, $e->getMessage()),
+                    ['exception' => $e]
+                );
+                $response = new Response('Service temporarily unavailable.', Response::HTTP_SERVICE_UNAVAILABLE, [
+                    'Content-Type' => 'text/plain; charset=utf-8',
+                    'Retry-After' => '60',
+                ]);
             }
         }
 
@@ -157,9 +167,9 @@ class OaiPmhController extends AbstractController
         $identify->appendChild($xml->createElement('baseURL', $baseUrl));
         $identify->appendChild($xml->createElement('protocolVersion', '2.0'));
         $identify->appendChild($xml->createElement('adminEmail', 'contact@episciences.org'));
-        $identify->appendChild($xml->createElement('earliestDatestamp', '1978-01-01'));
+        $identify->appendChild($xml->createElement('earliestDatestamp', '1978-01-01T00:00:00Z'));
         $identify->appendChild($xml->createElement('deletedRecord', 'no'));
-        $identify->appendChild($xml->createElement('granularity', 'YYYY-MM-DD'));
+        $identify->appendChild($xml->createElement('granularity', 'YYYY-MM-DDThh:mm:ssZ'));
 
         // description: oai-identifier
         $desc1 = $xml->createElement('description');
@@ -178,19 +188,19 @@ class OaiPmhController extends AbstractController
         $eprints = $xml->createElement('eprints');
         $eprints->setAttribute('xmlns', 'http://www.openarchives.org/OAI/1.1/eprints');
         $eprints->setAttributeNS(self::NS_XSI, 'xsi:schemaLocation', 'http://www.openarchives.org/OAI/1.1/eprints http://www.openarchives.org/OAI/1.1/eprints.xsd');
-        
+
         $content = $xml->createElement('content');
         $content->appendChild($xml->createElement('text', 'Episciences is an overlay journal platform'));
         $eprints->appendChild($content);
-        
+
         $metadataPolicy = $xml->createElement('metadataPolicy');
         $metadataPolicy->appendChild($xml->createElement('text', '1) CC0: https://creativecommons.org/publicdomain/zero/1.0/'));
         $eprints->appendChild($metadataPolicy);
-        
+
         $dataPolicy = $xml->createElement('dataPolicy');
         $dataPolicy->appendChild($xml->createElement('text'));
         $eprints->appendChild($dataPolicy);
-        
+
         $desc2->appendChild($eprints);
         $identify->appendChild($desc2);
 
@@ -207,10 +217,10 @@ class OaiPmhController extends AbstractController
 
         $identifier = $params['identifier'] ?? null;
 
-        if ($identifier !== null) {
+        if (is_string($identifier)) {
             $parts = explode(':', $identifier);
             $docid = end($parts);
-            if (!is_numeric($docid)) {
+            if (!ctype_digit($docid)) {
                 throw new OaiException('idDoesNotExist', 'Invalid OAI identifier format.');
             }
 
@@ -226,18 +236,11 @@ class OaiPmhController extends AbstractController
 
         $formats = $xml->createElement('ListMetadataFormats');
 
-        $formatList = [
-            'oai_dc' => ['schema' => 'https://www.openarchives.org/OAI/2.0/oai_dc.xsd', 'ns' => 'http://www.openarchives.org/OAI/2.0/oai_dc/'],
-            'tei' => ['schema' => 'https://api.archives-ouvertes.fr/documents/aofr.xsd', 'ns' => 'https://hal.archives-ouvertes.fr/'],
-            'oai_openaire' => ['schema' => 'https://www.openaire.eu/schema/repo-lit/4.0/openaire.xsd', 'ns' => 'http://namespace.openaire.eu/schema/oaire/'],
-            'crossref' => ['schema' => 'https://www.crossref.org/schemas/crossref5.3.1.xsd', 'ns' => self::NS_CROSSREF]
-        ];
-
-        foreach ($formatList as $prefix => $details) {
+        foreach (MetadataFormat::cases() as $metadataFormat) {
             $format = $xml->createElement('metadataFormat');
-            $format->appendChild($xml->createElement('metadataPrefix', $prefix));
-            $format->appendChild($xml->createElement('schema', $details['schema']));
-            $format->appendChild($xml->createElement('metadataNamespace', $details['ns']));
+            $format->appendChild($xml->createElement('metadataPrefix', $metadataFormat->value));
+            $format->appendChild($xml->createElement('schema', $metadataFormat->schemaUrl()));
+            $format->appendChild($xml->createElement('metadataNamespace', $metadataFormat->namespaceUri()));
             $formats->appendChild($format);
         }
 
@@ -294,16 +297,20 @@ class OaiPmhController extends AbstractController
 
         $facetData = [];
         if ($facetPivot !== null) {
+            $titles = [];
             foreach ($facetPivot as $pivotItem) {
-                $code = $pivotItem->getValue();
+                $code = (string)$pivotItem->getValue();
                 $title = $code;
                 $nestedPivot = $pivotItem->getPivot();
                 if (!empty($nestedPivot)) {
-                    $title = $nestedPivot[0]->getValue();
+                    $title = (string)$nestedPivot[0]->getValue();
                 }
+                $titles[$code] = $title;
+            }
 
-                $apiData = $this->apiClient->fetchJournalMetadata($code);
-                $facetData[] = $apiData ?? [
+            $apiData = $this->apiClient->fetchJournalsMetadata(array_keys($titles));
+            foreach ($titles as $code => $title) {
+                $facetData[] = $apiData[$code] ?? [
                     'code' => $code,
                     'title' => $title,
                     'description' => null,
@@ -409,8 +416,9 @@ class OaiPmhController extends AbstractController
      */
     private function handleList(DOMDocument $xml, DOMElement $root, string $verb, array $params): void
     {
-        $supportedFormats = ['oai_dc', 'tei', 'oai_openaire', 'crossref'];
-        $parsedParams = $this->queryHelper->parseListParameters($params, $supportedFormats);
+        $this->validateParams($params, ['metadataPrefix', 'from', 'until', 'set', 'resumptionToken']);
+
+        $parsedParams = $this->queryHelper->parseListParameters($params);
 
         $query = $this->queryHelper->buildListQuery($parsedParams, $verb);
 
@@ -427,17 +435,17 @@ class OaiPmhController extends AbstractController
 
         $listNode = $xml->createElement($verb);
         foreach ($docs as $document) {
-            $this->appendSingleRecordToXml($xml, $listNode, $verb, $parsedParams['metadataPrefix'], $document);
+            $this->appendSingleRecordToXml($xml, $listNode, $verb, $parsedParams['metadataFormat'], $document);
         }
         $root->appendChild($listNode);
 
-        $this->handleResumptionToken($xml, $root, $parsedParams, $numFound, $cursor, count($docs), $nextCursorMark);
+        $this->handleResumptionToken($xml, $root, $parsedParams, $numFound, $cursor, count($docs), (string)$nextCursorMark);
     }
 
     /**
      * @throws DOMException
      */
-    private function appendSingleRecordToXml(DOMDocument $xml, DOMElement $listNode, string $verb, string $metadataPrefix, mixed $document): void
+    private function appendSingleRecordToXml(DOMDocument $xml, DOMElement $listNode, string $verb, MetadataFormat $metadataFormat, mixed $document): void
     {
         $docid = $document['docid'] ?? null;
         $revueCode = $document['revue_code_t'] ?? 'unknown';
@@ -457,50 +465,52 @@ class OaiPmhController extends AbstractController
         $record = $xml->createElement('record');
         $record->appendChild($header);
 
-        $this->appendMetadata($xml, $record, $metadataPrefix, $document, (int)$docid);
+        if (!$this->appendMetadata($xml, $record, $metadataFormat, $document, (int)$docid)) {
+            // A record without <metadata> would be invalid against the OAI-PMH schema.
+            $this->logger->warning(sprintf('Skipping document %s: no valid %s metadata available', (string)$docid, $metadataFormat->value));
+            return;
+        }
 
         $listNode->appendChild($record);
     }
 
     /**
+     * Append the pre-rendered metadata to the record.
+     * Returns false when the Solr document holds no valid XML for the requested format.
+     *
      * @throws DOMException
      */
     private function appendMetadata(
         DOMDocument $xml,
         DOMElement $record,
-        string $metadataPrefix,
+        MetadataFormat $metadataFormat,
         DocumentInterface $document,
         int $docid
-    ): void {
-        $metadataXml = match ($metadataPrefix) {
-            'oai_dc' => $document['doc_dc'] ?? '',
-            'tei' => $document['doc_tei'] ?? '',
-            'oai_openaire' => $document['doc_openaire'] ?? '',
-            'crossref' => $document['doc_crossref'] ?? '',
-            default => '',
-        };
+    ): bool {
+        $metadataXml = $document[$metadataFormat->solrField()] ?? '';
 
-        if ($metadataXml) {
-            $metadata = $xml->createElement('metadata');
-            if ($metadataPrefix === 'tei') {
-                $metadata->setAttributeNS(self::NS_XMLNS, 'xmlns:tei', 'http://www.tei-c.org/ns/1.0');
-            } elseif ($metadataPrefix === 'oai_openaire') {
-                $metadata->setAttributeNS(self::NS_XMLNS, 'xmlns:datacite', 'http://datacite.org/schema/kernel-4');
-            } elseif ($metadataPrefix === 'crossref') {
-                $metadata->setAttributeNS(self::NS_XMLNS, 'xmlns:crossref', self::NS_CROSSREF);
-            }
-            $fragment = $xml->createDocumentFragment();
-            $importSuccess = @$fragment->appendXML($metadataXml);
-            if (!$importSuccess) {
-                $this->logger->error(sprintf('Malformed XML metadata detected for document %s (format: %s)', (string)$docid, $metadataPrefix));
-            }
-            $metadata->appendChild($fragment);
-            $record->appendChild($metadata);
+        if (!is_string($metadataXml) || $metadataXml === '') {
+            return false;
         }
+
+        $fragment = $xml->createDocumentFragment();
+        if (!@$fragment->appendXML($metadataXml)) {
+            $this->logger->error(sprintf('Malformed XML metadata detected for document %d (format: %s)', $docid, $metadataFormat->value));
+            return false;
+        }
+
+        $metadata = $xml->createElement('metadata');
+        foreach ($metadataFormat->wrapperNamespaces() as $prefix => $namespaceUri) {
+            $metadata->setAttributeNS(self::NS_XMLNS, 'xmlns:' . $prefix, $namespaceUri);
+        }
+        $metadata->appendChild($fragment);
+        $record->appendChild($metadata);
+
+        return true;
     }
 
     /**
-     * @param array<string, mixed> $parsedParams
+     * @param ParsedListParams $parsedParams
      * @throws InvalidArgumentException|DOMException
      */
     private function handleResumptionToken(
@@ -512,11 +522,7 @@ class OaiPmhController extends AbstractController
         int $docsCount,
         string $nextCursorMark
     ): void {
-        $resumptionToken = $parsedParams['solrCursorMark'] !== '*' ? $parsedParams['solrCursorMark'] : null;
-        $metadataPrefix = $parsedParams['metadataPrefix'];
-        $from = $parsedParams['from'];
-        $until = $parsedParams['until'];
-        $set = $parsedParams['set'];
+        $isResumedRequest = $parsedParams['solrCursorMark'] !== '*';
 
         $nextCursor = $cursor + $docsCount;
 
@@ -525,23 +531,24 @@ class OaiPmhController extends AbstractController
             $expirationDate = gmdate(self::DATE_FORMAT_ISO, time() + $expirationTime);
 
             $tokenConf = [
-                'metadataPrefix' => $metadataPrefix,
-                'from' => $from,
-                'until' => $until,
-                'set' => $set,
-                'cursor' => $nextCursor
+                'metadataPrefix' => $parsedParams['metadataFormat']->value,
+                'from' => $parsedParams['from'],
+                'until' => $parsedParams['until'],
+                'set' => $parsedParams['set'],
+                'cursor' => $nextCursor,
+                'cursorMark' => $nextCursorMark,
             ];
 
-            $newTokenItem = $this->cache->getItem('oai-token-' . hash('sha256', $nextCursorMark));
-            $newTokenItem->set($tokenConf)->expiresAfter($expirationTime);
-            $this->cache->save($newTokenItem);
+            // Expose an opaque URL-safe token instead of the raw Solr cursorMark,
+            // which may contain characters (+, =) broken by URL decoding.
+            $token = $this->queryHelper->storeResumptionToken($tokenConf, $expirationTime);
 
-            $resumptionTokenNode = $xml->createElement('resumptionToken', $nextCursorMark);
+            $resumptionTokenNode = $xml->createElement('resumptionToken', $token);
             $resumptionTokenNode->setAttribute('expirationDate', $expirationDate);
             $resumptionTokenNode->setAttribute('completeListSize', (string)$numFound);
             $resumptionTokenNode->setAttribute('cursor', (string)$cursor);
             $root->appendChild($resumptionTokenNode);
-        } elseif ($resumptionToken !== null) {
+        } elseif ($isResumedRequest) {
             $resumptionTokenNode = $xml->createElement('resumptionToken');
             $resumptionTokenNode->setAttribute('completeListSize', (string)$numFound);
             $resumptionTokenNode->setAttribute('cursor', (string)$cursor);
@@ -560,24 +567,24 @@ class OaiPmhController extends AbstractController
         $identifier = $params['identifier'] ?? null;
         $metadataPrefix = $params['metadataPrefix'] ?? null;
 
-        if (!$identifier || !$metadataPrefix) {
+        if (!is_string($identifier) || $identifier === '' || !is_string($metadataPrefix) || $metadataPrefix === '') {
             throw new OaiException('badArgument', 'Missing identifier or metadataPrefix.');
         }
 
-        $supportedFormats = ['oai_dc', 'tei', 'oai_openaire', 'crossref'];
-        if (!in_array($metadataPrefix, $supportedFormats, true)) {
+        $metadataFormat = MetadataFormat::tryFrom($metadataPrefix);
+        if ($metadataFormat === null) {
             throw new OaiException('cannotDisseminateFormat', sprintf('The metadata format %s is not supported.', $metadataPrefix));
         }
 
         $parts = explode(':', $identifier);
         $docid = end($parts);
 
-        if (!is_numeric($docid)) {
+        if (!ctype_digit($docid)) {
             throw new OaiException('badArgument', 'Invalid OAI identifier.');
         }
 
         $docidInt = (int)$docid;
-        $document = $this->fetchSolrDocument($docidInt, $metadataPrefix);
+        $document = $this->fetchSolrDocument($docidInt, $metadataFormat);
         $revueCode = $document['revue_code_t'] ?? 'unknown';
         $pubDate = $document['publication_date_tdate'] ?? '';
 
@@ -591,7 +598,9 @@ class OaiPmhController extends AbstractController
         $header->appendChild($xml->createElement('setSpec', 'journal:' . $revueCode));
         $record->appendChild($header);
 
-        $this->appendMetadata($xml, $record, $metadataPrefix, $document, $docidInt);
+        if (!$this->appendMetadata($xml, $record, $metadataFormat, $document, $docidInt)) {
+            throw new OaiException('cannotDisseminateFormat', sprintf('The item does not provide metadata in the %s format.', $metadataPrefix));
+        }
 
         $getRecord->appendChild($record);
         $root->appendChild($getRecord);
@@ -600,21 +609,13 @@ class OaiPmhController extends AbstractController
     /**
      * @throws OaiException
      */
-    private function fetchSolrDocument(int $docid, string $metadataPrefix): DocumentInterface
+    private function fetchSolrDocument(int $docid, MetadataFormat $metadataFormat): DocumentInterface
     {
         /** @var Query $query */
         $query = $this->solrClient->createQuery($this->solrClient::QUERY_SELECT);
         $query->setQuery(sprintf('docid:%d', $docid));
         $query->setRows(1);
-
-        $fieldName = match ($metadataPrefix) {
-            'oai_dc' => 'doc_dc',
-            'tei' => 'doc_tei',
-            'oai_openaire' => 'doc_openaire',
-            'crossref' => 'doc_crossref',
-            default => throw new \InvalidArgumentException('Unsupported format'),
-        };
-        $query->setFields(['docid', 'revue_code_t', 'publication_date_tdate', $fieldName]);
+        $query->setFields(['docid', 'revue_code_t', 'publication_date_tdate', $metadataFormat->solrField()]);
 
         $resultset = $this->solrClient->select($query);
 
@@ -654,12 +655,24 @@ class OaiPmhController extends AbstractController
     private function createErrorResponse(DOMDocument $xml, string $code, string $message): Response
     {
         $root = $xml->documentElement;
+
+        // The OAI-PMH spec requires the <request> element to carry no attributes
+        // when the error is badVerb or badArgument.
+        if ($root !== null && in_array($code, ['badVerb', 'badArgument'], true)) {
+            $requestNode = $root->getElementsByTagName('request')->item(0);
+            if ($requestNode instanceof DOMElement) {
+                foreach (iterator_to_array($requestNode->attributes) as $attribute) {
+                    $requestNode->removeAttributeNode($attribute);
+                }
+            }
+        }
+
         $error = $xml->createElement('error', $message);
         $error->setAttribute('code', $code);
-        $root->appendChild($error);
+        $root?->appendChild($error);
 
         return new Response($xml->saveXML(), Response::HTTP_OK, [
-            'Content-Type' => 'text/xml; charset=utf-8'
+            'Content-Type' => self::CONTENT_TYPE_XML
         ]);
     }
 }
