@@ -5,7 +5,7 @@ EXEC_PHP       := $(DOCKER_COMPOSE) exec web
 # Default target
 .DEFAULT_GOAL := help
 
-.PHONY: help test phpstan up build down shell composer-update composer-install
+.PHONY: help test phpstan up build down shell composer-update composer-install cache-clear
 
 help: ## Show this help message
 	@echo "📡 Episciences OAI-PMH Service"
@@ -56,3 +56,8 @@ ifdef target
 else
 	$(EXEC_PHP) vendor/bin/phpstan analyse --memory-limit=1G
 endif
+
+cache-clear: ## Clear Symfony cache and the shared var/share cache
+	$(EXEC_PHP) php bin/console cache:clear
+	$(EXEC_PHP) php bin/console cache:pool:clear cache.app
+	rm -rf var/share/dev/pools var/share/test/pools
