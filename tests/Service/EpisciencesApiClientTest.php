@@ -41,7 +41,7 @@ class EpisciencesApiClientTest extends TestCase
         $handlerStack->push($history);
 
         $httpClient = new Client(['handler' => $handlerStack]);
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = $this->createStub(LoggerInterface::class);
 
         $client = new EpisciencesApiClient(
             'https://api-dev.episciences.org/',
@@ -77,7 +77,7 @@ class EpisciencesApiClientTest extends TestCase
 
         $handlerStack = HandlerStack::create($mock);
         $httpClient = new Client(['handler' => $handlerStack]);
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = $this->createStub(LoggerInterface::class);
 
         $client = new EpisciencesApiClient(
             'https://api-dev.episciences.org/',
@@ -90,6 +90,39 @@ class EpisciencesApiClientTest extends TestCase
         $result = $client->fetchJournalMetadata('unknown');
 
         $this->assertNull($result);
+    }
+
+    public function testFetchJournalsMetadataMixesSuccessAndFailure(): void
+    {
+        $mockData = [
+            'code' => 'dmtcs',
+            'name' => 'Discrete Mathematics & Theoretical Computer Science',
+            'settings' => [],
+        ];
+
+        $mock = new MockHandler([
+            new Response(200, ['Content-Type' => 'application/ld+json'], json_encode($mockData)),
+            new Response(404, [], 'Not Found'),
+        ]);
+
+        $handlerStack = HandlerStack::create($mock);
+        $httpClient = new Client(['handler' => $handlerStack]);
+        $logger = $this->createStub(LoggerInterface::class);
+
+        $client = new EpisciencesApiClient(
+            'https://api-dev.episciences.org/',
+            $logger,
+            false,
+            '',
+            $httpClient
+        );
+
+        $results = $client->fetchJournalsMetadata(['dmtcs', 'unknown']);
+
+        $this->assertCount(2, $results);
+        $this->assertNotNull($results['dmtcs']);
+        $this->assertSame('Discrete Mathematics & Theoretical Computer Science', $results['dmtcs']['title']);
+        $this->assertNull($results['unknown']);
     }
 
     public function testFetchJournalMetadataNetworkError(): void

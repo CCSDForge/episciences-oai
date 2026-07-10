@@ -5,28 +5,48 @@ declare(strict_types=1);
 namespace App\Service;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Promise\Utils;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
 class EpisciencesApiClient
 {
+    private const float REQUEST_TIMEOUT = 2.0;
+
     private string $apiUrl;
     private LoggerInterface $logger;
-    private bool $verifySsl;
-    private string $apiHost;
-    private ?\GuzzleHttp\ClientInterface $httpClient;
+    private ClientInterface $httpClient;
 
     public function __construct(
         string $episciencesApiUrl,
         LoggerInterface $logger,
         bool $episciencesApiVerifySsl,
         string $episciencesApiHost,
-        ?\GuzzleHttp\ClientInterface $httpClient = null
+        ?ClientInterface $httpClient = null
     ) {
         $this->apiUrl = $episciencesApiUrl;
         $this->logger = $logger;
-        $this->verifySsl = $episciencesApiVerifySsl;
-        $this->apiHost = $episciencesApiHost;
-        $this->httpClient = $httpClient;
+        $this->httpClient = $httpClient ?? $this->createDefaultClient($episciencesApiVerifySsl, $episciencesApiHost);
+    }
+
+    private function createDefaultClient(bool $verifySsl, string $apiHost): ClientInterface
+    {
+        $headers = [
+            'Accept' => 'application/ld+json',
+            'User-Agent' => 'Episciences-OAI-Service',
+            'X-Forwarded-Proto' => 'https',
+        ];
+        if ($apiHost !== '') {
+            $headers['Host'] = $apiHost;
+        }
+
+        return new Client([
+            'timeout' => self::REQUEST_TIMEOUT,
+            'verify' => $verifySsl,
+            'headers' => $headers,
+        ]);
     }
 
     /**
@@ -37,42 +57,48 @@ class EpisciencesApiClient
      */
     public function fetchJournalMetadata(string $code): ?array
     {
-        $url = rtrim($this->apiUrl, '/') . '/api/journals/' . urlencode($code);
+        return $this->fetchJournalsMetadata([$code])[$code] ?? null;
+    }
 
-        $client = $this->httpClient;
-        if ($client === null) {
-            $headers = [
-                'Accept' => 'application/ld+json',
-                'User-Agent' => 'Episciences-OAI-Service',
-                'X-Forwarded-Proto' => 'https',
-            ];
-            if ($this->apiHost !== '') {
-                $headers['Host'] = $this->apiHost;
-            }
-
-            $client = new Client([
-                'timeout' => 2.0,
-                'verify' => $this->verifySsl,
-                'headers' => $headers,
-            ]);
+    /**
+     * Fetch metadata for several journals with concurrent HTTP requests.
+     * Failed lookups map to null.
+     *
+     * @param array<int, string> $codes
+     * @return array<string, array<string, mixed>|null>
+     */
+    public function fetchJournalsMetadata(array $codes): array
+    {
+        $promises = [];
+        foreach ($codes as $code) {
+            $url = rtrim($this->apiUrl, '/') . '/api/journals/' . urlencode($code);
+            $promises[$code] = $this->httpClient->requestAsync('GET', $url);
         }
 
-        $result = null;
+        $results = [];
+        foreach (Utils::settle($promises)->wait() as $code => $settled) {
+            $results[$code] = null;
 
-        try {
-            $response = $client->request('GET', $url);
-            if ($response->getStatusCode() === 200) {
-                $body = $response->getBody()->getContents();
-                $data = json_decode($body, true);
-                if (is_array($data)) {
-                    $result = $this->parseMetadata($data, $code);
-                }
+            if ($settled['state'] !== PromiseInterface::FULFILLED) {
+                $reason = $settled['reason'];
+                $message = $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason;
+                $this->logger->error(sprintf('Error fetching metadata for journal %s: %s', $code, $message));
+                continue;
             }
-        } catch (\Throwable $t) {
-            $this->logger->error(sprintf('Error fetching metadata for journal %s: %s', $code, $t->getMessage()));
+
+            /** @var ResponseInterface $response */
+            $response = $settled['value'];
+            if ($response->getStatusCode() !== 200) {
+                continue;
+            }
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            if (is_array($data)) {
+                $results[$code] = $this->parseMetadata($data, (string) $code);
+            }
         }
 
-        return $result;
+        return $results;
     }
 
     /**
