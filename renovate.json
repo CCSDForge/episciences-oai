@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "baseBranches": ["preprod"],
+  "timezone": "Europe/Paris",
+  "labels": ["dependencies"],
+  "composer": {
+    "enabled": true
+  },
+  "docker": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["composer"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "composer minor/patch dependencies",
+      "automerge": false
+    },
+    {
+      "matchManagers": ["composer"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "composer major dependencies",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker base image"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"]
+  }
+}
