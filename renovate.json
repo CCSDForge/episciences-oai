@@ -3,13 +3,12 @@
   "extends": [
     "config:recommended"
   ],
-  "baseBranches": ["preprod"],
+  "baseBranchPatterns": [
+    "preprod"
+  ],
   "timezone": "Europe/Paris",
   "labels": ["dependencies"],
   "composer": {
-    "enabled": true
-  },
-  "docker": {
     "enabled": true
   },
   "lockFileMaintenance": {
@@ -18,14 +17,22 @@
   },
   "packageRules": [
     {
+      "matchCategories": [
+        "docker"
+      ],
+      "enabled": true
+    },
+    {
       "matchManagers": ["composer"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchUpdateTypes": ["minor",  "patch"],
       "groupName": "composer minor/patch dependencies",
       "automerge": false
     },
     {
       "matchManagers": ["composer"],
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "groupName": "composer major dependencies",
       "dependencyDashboardApproval": true
     },
