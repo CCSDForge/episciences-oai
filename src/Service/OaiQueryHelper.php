@@ -109,17 +109,23 @@ class OaiQueryHelper
             throw new OaiException('badResumptionToken', self::ERROR_BAD_TOKEN);
         }
 
-        $metadataFormat = MetadataFormat::tryFrom((string) ($conf['metadataPrefix'] ?? ''));
+        $prefix = $conf['metadataPrefix'] ?? null;
+        $metadataFormat = is_string($prefix) ? MetadataFormat::tryFrom($prefix) : null;
         if ($metadataFormat === null) {
             throw new OaiException('badResumptionToken', self::ERROR_BAD_TOKEN);
         }
 
+        $from = $conf['from'] ?? null;
+        $until = $conf['until'] ?? null;
+        $set = $conf['set'] ?? null;
+        $cursor = $conf['cursor'] ?? 0;
+
         return [
             'metadataFormat' => $metadataFormat,
-            'from' => isset($conf['from']) ? (string) $conf['from'] : null,
-            'until' => isset($conf['until']) ? (string) $conf['until'] : null,
-            'set' => isset($conf['set']) ? (string) $conf['set'] : null,
-            'cursor' => (int) ($conf['cursor'] ?? 0),
+            'from' => is_string($from) ? $from : null,
+            'until' => is_string($until) ? $until : null,
+            'set' => is_string($set) ? $set : null,
+            'cursor' => is_int($cursor) ? $cursor : (is_numeric($cursor) ? (int) $cursor : 0),
             'solrCursorMark' => $conf['cursorMark'],
         ];
     }

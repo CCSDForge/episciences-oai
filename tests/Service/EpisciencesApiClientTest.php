@@ -31,10 +31,14 @@ class EpisciencesApiClientTest extends TestCase
             ],
         ];
 
+        $mockBody = json_encode($mockData);
+        $this->assertIsString($mockBody);
+
         $mock = new MockHandler([
-            new Response(200, ['Content-Type' => 'application/ld+json'], json_encode($mockData)),
+            new Response(200, ['Content-Type' => 'application/ld+json'], $mockBody),
         ]);
 
+        /** @var array<int, array{request: Request}> $container */
         $container = [];
         $history = Middleware::history($container);
         $handlerStack = HandlerStack::create($mock);
@@ -63,6 +67,7 @@ class EpisciencesApiClientTest extends TestCase
         $this->assertSame(['mathematics', 'physics'], $result['subjects']);
 
         // Verify request and headers
+        $this->assertIsArray($container);
         $this->assertCount(1, $container);
         $request = $container[0]['request'];
         $this->assertSame('GET', $request->getMethod());
@@ -100,8 +105,11 @@ class EpisciencesApiClientTest extends TestCase
             'settings' => [],
         ];
 
+        $mockBody = json_encode($mockData);
+        $this->assertIsString($mockBody);
+
         $mock = new MockHandler([
-            new Response(200, ['Content-Type' => 'application/ld+json'], json_encode($mockData)),
+            new Response(200, ['Content-Type' => 'application/ld+json'], $mockBody),
             new Response(404, [], 'Not Found'),
         ]);
 

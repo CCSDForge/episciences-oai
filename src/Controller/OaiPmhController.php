@@ -9,6 +9,7 @@ use DOMException;
 use Psr\Cache\InvalidArgumentException;
 use Solarium\Client;
 use Solarium\Component\Result\Facet\Pivot\Pivot;
+use Solarium\Component\Result\Facet\Pivot\PivotItem;
 use Solarium\QueryType\Select\Query\Query;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -118,7 +119,11 @@ class OaiPmhController extends AbstractController
                     default:
                         throw new OaiException('badVerb', 'Illegal OAI-PMH verb.');
                 }
-                $response = new Response($xml->saveXML(), Response::HTTP_OK, [
+                $xmlContent = $xml->saveXML();
+                if ($xmlContent === false) {
+                    throw new \RuntimeException('Failed to serialize OAI-PMH XML response.');
+                }
+                $response = new Response($xmlContent, Response::HTTP_OK, [
                     'Content-Type' => self::CONTENT_TYPE_XML
                 ]);
             } catch (OaiException $e) {
@@ -142,12 +147,20 @@ class OaiPmhController extends AbstractController
     #[Route('/oai/xsl', name: 'oai_pmh_xsl', methods: ['GET'])]
     public function xsl(): Response
     {
-        $xslPath = $this->getParameter('kernel.project_dir') . '/config/oai2.xsl';
+        $projectDir = $this->getParameter('kernel.project_dir');
+        if (!is_string($projectDir)) {
+            throw new \RuntimeException('Invalid project directory configuration');
+        }
+
+        $xslPath = $projectDir . '/config/oai2.xsl';
         if (!file_exists($xslPath)) {
             throw $this->createNotFoundException('Stylesheet not found');
         }
 
         $content = file_get_contents($xslPath);
+        if ($content === false) {
+            throw $this->createNotFoundException('Stylesheet could not be read');
+        }
 
         return new Response($content, Response::HTTP_OK, [
             'Content-Type' => self::CONTENT_TYPE_XML
@@ -268,7 +281,9 @@ class OaiPmhController extends AbstractController
 
         $facetData = $this->fetchSetsFacetData();
         foreach ($facetData as $item) {
-            $listSetsNode->appendChild($this->createSetNode($xml, 'journal:' . $item['code'], $item['title'], $item));
+            $code = is_string($item['code'] ?? null) ? $item['code'] : '';
+            $title = is_string($item['title'] ?? null) ? $item['title'] : $code;
+            $listSetsNode->appendChild($this->createSetNode($xml, 'journal:' . $code, $title, $item));
         }
 
         $root->appendChild($listSetsNode);
@@ -282,7 +297,11 @@ class OaiPmhController extends AbstractController
     {
         $cacheItem = $this->cache->getItem('oai-sets-facet-data');
         if ($cacheItem->isHit()) {
-            return (array)$cacheItem->get();
+            $cached = $cacheItem->get();
+            if (is_array($cached)) {
+                /** @var array<int, array<string, mixed>> $cached */
+                return $cached;
+            }
         }
 
         /** @var Query $query */
@@ -292,18 +311,28 @@ class OaiPmhController extends AbstractController
         $query->getFacetSet()->createFacetPivot('journal_pivot')->addFields('revue_code_t,revue_title_s');
 
         $resultset = $this->solrClient->select($query);
+        $facetSet = $resultset->getFacetSet();
         /** @var Pivot|null $facetPivot */
-        $facetPivot = $resultset->getFacetSet()->getFacet('journal_pivot');
+        $facetPivot = $facetSet !== null ? $facetSet->getFacet('journal_pivot') : null;
 
         $facetData = [];
         if ($facetPivot !== null) {
             $titles = [];
             foreach ($facetPivot as $pivotItem) {
-                $code = (string)$pivotItem->getValue();
+                /** @var PivotItem $pivotItem */
+                $rawCode = $pivotItem->getValue();
+                $code = is_scalar($rawCode) ? trim((string)$rawCode) : '';
+                if ($code === '') {
+                    continue;
+                }
                 $title = $code;
+                /** @var array<PivotItem>|null $nestedPivot */
                 $nestedPivot = $pivotItem->getPivot();
                 if (!empty($nestedPivot)) {
-                    $title = (string)$nestedPivot[0]->getValue();
+                    $rawTitle = $nestedPivot[0]->getValue();
+                    if (is_scalar($rawTitle)) {
+                        $title = (string)$rawTitle;
+                    }
                 }
                 $titles[$code] = $title;
             }
@@ -384,24 +413,29 @@ class OaiPmhController extends AbstractController
         ];
 
         foreach ($fields as $key => $tag) {
-            if (!empty($metadata[$key])) {
+            $val = $metadata[$key] ?? null;
+            if (is_scalar($val) && (string)$val !== '') {
                 $node = $xml->createElementNS($nsDc, $tag);
-                $node->appendChild($xml->createTextNode((string)$metadata[$key]));
+                $node->appendChild($xml->createTextNode((string)$val));
                 $oaiDcNode->appendChild($node);
             }
         }
 
-        if (!empty($metadata['subjects'])) {
-            foreach ($metadata['subjects'] as $subject) {
-                $node = $xml->createElementNS($nsDc, 'dc:subject');
-                $node->appendChild($xml->createTextNode((string)$subject));
-                $oaiDcNode->appendChild($node);
+        $subjects = $metadata['subjects'] ?? null;
+        if (is_iterable($subjects)) {
+            foreach ($subjects as $subject) {
+                if (is_scalar($subject) && (string)$subject !== '') {
+                    $node = $xml->createElementNS($nsDc, 'dc:subject');
+                    $node->appendChild($xml->createTextNode((string)$subject));
+                    $oaiDcNode->appendChild($node);
+                }
             }
         }
 
-        if (!empty($metadata['issn'])) {
+        $issn = $metadata['issn'] ?? null;
+        if (is_scalar($issn) && (string)$issn !== '') {
             $node = $xml->createElementNS($nsDc, 'dc:identifier');
-            $node->appendChild($xml->createTextNode('urn:ISSN:' . $metadata['issn']));
+            $node->appendChild($xml->createTextNode('urn:ISSN:' . (string)$issn));
             $oaiDcNode->appendChild($node);
         }
 
@@ -423,7 +457,7 @@ class OaiPmhController extends AbstractController
         $query = $this->queryHelper->buildListQuery($parsedParams, $verb);
 
         $resultset = $this->solrClient->select($query);
-        $numFound = $resultset->getNumFound();
+        $numFound = $resultset->getNumFound() ?? 0;
         $nextCursorMark = $resultset->getNextCursorMark();
         $docs = $resultset->getDocuments();
 
@@ -445,11 +479,15 @@ class OaiPmhController extends AbstractController
     /**
      * @throws DOMException
      */
-    private function appendSingleRecordToXml(DOMDocument $xml, DOMElement $listNode, string $verb, MetadataFormat $metadataFormat, mixed $document): void
+    private function appendSingleRecordToXml(DOMDocument $xml, DOMElement $listNode, string $verb, MetadataFormat $metadataFormat, DocumentInterface $document): void
     {
-        $docid = $document['docid'] ?? null;
-        $revueCode = $document['revue_code_t'] ?? 'unknown';
-        $pubDate = $document['publication_date_tdate'] ?? '';
+        $fields = $document->getFields();
+        $rawDocId = $fields['docid'] ?? null;
+        $docid = is_scalar($rawDocId) ? (string)$rawDocId : '';
+        $rawRevue = $fields['revue_code_t'] ?? null;
+        $revueCode = is_string($rawRevue) && $rawRevue !== '' ? $rawRevue : 'unknown';
+        $rawPubDate = $fields['publication_date_tdate'] ?? null;
+        $pubDate = is_string($rawPubDate) ? $rawPubDate : '';
 
         $header = $xml->createElement('header');
         $header->appendChild($xml->createElement('identifier', sprintf('oai:episciences.org:%s:%s', $revueCode, $docid)));
@@ -465,9 +503,10 @@ class OaiPmhController extends AbstractController
         $record = $xml->createElement('record');
         $record->appendChild($header);
 
-        if (!$this->appendMetadata($xml, $record, $metadataFormat, $document, (int)$docid)) {
+        $docidInt = is_numeric($rawDocId) ? (int)$rawDocId : 0;
+        if (!$this->appendMetadata($xml, $record, $metadataFormat, $document, $docidInt)) {
             // A record without <metadata> would be invalid against the OAI-PMH schema.
-            $this->logger->warning(sprintf('Skipping document %s: no valid %s metadata available', (string)$docid, $metadataFormat->value));
+            $this->logger->warning(sprintf('Skipping document %s: no valid %s metadata available', $docid, $metadataFormat->value));
             return;
         }
 
@@ -487,7 +526,8 @@ class OaiPmhController extends AbstractController
         DocumentInterface $document,
         int $docid
     ): bool {
-        $metadataXml = $document[$metadataFormat->solrField()] ?? '';
+        $fields = $document->getFields();
+        $metadataXml = $fields[$metadataFormat->solrField()] ?? '';
 
         if (!is_string($metadataXml) || $metadataXml === '') {
             return false;
@@ -585,8 +625,11 @@ class OaiPmhController extends AbstractController
 
         $docidInt = (int)$docid;
         $document = $this->fetchSolrDocument($docidInt, $metadataFormat);
-        $revueCode = $document['revue_code_t'] ?? 'unknown';
-        $pubDate = $document['publication_date_tdate'] ?? '';
+        $fields = $document->getFields();
+        $rawRevue = $fields['revue_code_t'] ?? null;
+        $revueCode = is_string($rawRevue) && $rawRevue !== '' ? $rawRevue : 'unknown';
+        $rawPubDate = $fields['publication_date_tdate'] ?? null;
+        $pubDate = is_string($rawPubDate) ? $rawPubDate : '';
 
         $getRecord = $xml->createElement('GetRecord');
         $record = $xml->createElement('record');
@@ -671,7 +714,12 @@ class OaiPmhController extends AbstractController
         $error->setAttribute('code', $code);
         $root?->appendChild($error);
 
-        return new Response($xml->saveXML(), Response::HTTP_OK, [
+        $xmlContent = $xml->saveXML();
+        if ($xmlContent === false) {
+            throw new \RuntimeException('Failed to serialize OAI-PMH XML error response.');
+        }
+
+        return new Response($xmlContent, Response::HTTP_OK, [
             'Content-Type' => self::CONTENT_TYPE_XML
         ]);
     }

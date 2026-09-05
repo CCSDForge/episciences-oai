@@ -76,25 +76,39 @@ class EpisciencesApiClient
         }
 
         $results = [];
-        foreach (Utils::settle($promises)->wait() as $code => $settled) {
-            $results[$code] = null;
+        /** @var mixed $settledRaw */
+        $settledRaw = Utils::settle($promises)->wait();
+        if (!is_array($settledRaw)) {
+            return $results;
+        }
+
+        /** @var array<string|int, array{state: string, value?: mixed, reason?: mixed}> $settledRaw */
+        foreach ($settledRaw as $code => $settled) {
+            $codeStr = (string) $code;
+            $results[$codeStr] = null;
 
             if ($settled['state'] !== PromiseInterface::FULFILLED) {
-                $reason = $settled['reason'];
-                $message = $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason;
-                $this->logger->error(sprintf('Error fetching metadata for journal %s: %s', $code, $message));
+                $reason = $settled['reason'] ?? null;
+                $message = $reason instanceof \Throwable ? $reason->getMessage() : (is_scalar($reason) ? (string) $reason : 'unknown error');
+                $this->logger->error(sprintf('Error fetching metadata for journal %s: %s', $codeStr, $message));
                 continue;
             }
 
-            /** @var ResponseInterface $response */
-            $response = $settled['value'];
-            if ($response->getStatusCode() !== 200) {
+            $response = $settled['value'] ?? null;
+            if (!$response instanceof ResponseInterface || $response->getStatusCode() !== 200) {
                 continue;
             }
 
             $data = json_decode($response->getBody()->getContents(), true);
             if (is_array($data)) {
-                $results[$code] = $this->parseMetadata($data, (string) $code);
+                /** @var array<string, mixed> $validData */
+                $validData = [];
+                foreach ($data as $k => $v) {
+                    if (is_string($k)) {
+                        $validData[$k] = $v;
+                    }
+                }
+                $results[$codeStr] = $this->parseMetadata($validData, $codeStr);
             }
         }
 
@@ -108,7 +122,7 @@ class EpisciencesApiClient
      */
     private function parseMetadata(array $data, string $code): array
     {
-        $title = $data['name'] ?? $code;
+        $title = is_string($data['name'] ?? null) ? $data['name'] : $code;
         $description = $this->getSettingValue($data, 'journalDescription');
         $publisher = $this->getSettingValue($data, 'journalPublisher');
         $date = $this->getSettingValue($data, 'journalCreationYear');
@@ -116,7 +130,7 @@ class EpisciencesApiClient
 
         $subjects = [];
         $keywords = $this->getSettingValue($data, 'journalKeywords');
-        if ($keywords) {
+        if ($keywords !== null && $keywords !== '') {
             $parsedSubjects = array_map('trim', explode(';', $keywords));
             $subjects = array_values(array_filter($parsedSubjects));
         }
@@ -145,8 +159,9 @@ class EpisciencesApiClient
         }
 
         foreach ($settings as $setting) {
-            if (isset($setting['setting'], $setting['value']) && $setting['setting'] === $settingName) {
-                return (string)$setting['value'];
+            if (is_array($setting) && isset($setting['setting'], $setting['value']) && $setting['setting'] === $settingName) {
+                $val = $setting['value'];
+                return is_scalar($val) ? (string) $val : null;
             }
         }
 
