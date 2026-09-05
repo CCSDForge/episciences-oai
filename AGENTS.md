@@ -114,7 +114,7 @@ Follow the **Conventional Commits** specification (`type(scope): description`):
 
 ### 3. PHP Best Practices
 * **Strict Types**: Always begin every PHP file with `declare(strict_types=1);` right after the opening tag.
-* **Static Analysis**: Run `make phpstan` before committing to ensure there are no errors at level 6.
+* **Static Analysis**: Run `make phpstan` before committing to ensure there are no errors at level 9.
 * **Unit Tests**: Ensure all tests pass with `make test` before submitting changes.
 
 ### 4. Git Staging Practices

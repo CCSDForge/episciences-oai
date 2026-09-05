@@ -150,6 +150,7 @@ class OaiPmhControllerTest extends WebTestCase
             ]);
 
         $cache = static::getContainer()->get(\Psr\Cache\CacheItemPoolInterface::class);
+        $this->assertInstanceOf(\Psr\Cache\CacheItemPoolInterface::class, $cache);
         $cache->deleteItem('oai-sets-facet-data');
 
         static::getContainer()->set(Client::class, $solariumClientMock);
@@ -449,7 +450,8 @@ class OaiPmhControllerTest extends WebTestCase
         $this->assertMatchesRegularExpression('#<resumptionToken[^>]*completeListSize="2" cursor="0">[a-f0-9]{64}</resumptionToken>#', $firstPage);
 
         preg_match('#<resumptionToken[^>]*>([a-f0-9]{64})</resumptionToken>#', $firstPage, $matches);
-        $token = $matches[1];
+        $token = $matches[1] ?? '';
+        $this->assertNotEmpty($token);
 
         // Second page: resume with the token, list ends with an empty resumptionToken
         $client->request('GET', '/', ['verb' => 'ListRecords', 'resumptionToken' => $token]);
@@ -498,11 +500,12 @@ class OaiPmhControllerTest extends WebTestCase
     private function createSolrDocumentStub(array $data): SelectDocument
     {
         $documentStub = $this->createStub(SelectDocument::class);
+        $documentStub->method('getFields')->willReturn($data);
         $documentStub->method('offsetExists')->willReturnCallback(
-            static fn (mixed $offset): bool => array_key_exists($offset, $data)
+            static fn (mixed $offset): bool => (is_string($offset) || is_int($offset)) && array_key_exists($offset, $data)
         );
         $documentStub->method('offsetGet')->willReturnCallback(
-            static fn (mixed $offset): mixed => $data[$offset] ?? null
+            static fn (mixed $offset): mixed => (is_string($offset) || is_int($offset)) ? ($data[$offset] ?? null) : null
         );
 
         return $documentStub;
