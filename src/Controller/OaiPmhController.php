@@ -120,7 +120,10 @@ class OaiPmhController extends AbstractController
                         throw new OaiException('badVerb', 'Illegal OAI-PMH verb.');
                 }
                 $xmlContent = $xml->saveXML();
-                $response = new Response($xmlContent !== false ? $xmlContent : '', Response::HTTP_OK, [
+                if ($xmlContent === false) {
+                    throw new \RuntimeException('Failed to serialize OAI-PMH XML response.');
+                }
+                $response = new Response($xmlContent, Response::HTTP_OK, [
                     'Content-Type' => self::CONTENT_TYPE_XML
                 ]);
             } catch (OaiException $e) {
@@ -318,7 +321,10 @@ class OaiPmhController extends AbstractController
             foreach ($facetPivot as $pivotItem) {
                 /** @var PivotItem $pivotItem */
                 $rawCode = $pivotItem->getValue();
-                $code = is_scalar($rawCode) ? (string)$rawCode : '';
+                $code = is_scalar($rawCode) ? trim((string)$rawCode) : '';
+                if ($code === '') {
+                    continue;
+                }
                 $title = $code;
                 /** @var array<PivotItem>|null $nestedPivot */
                 $nestedPivot = $pivotItem->getPivot();
@@ -709,7 +715,11 @@ class OaiPmhController extends AbstractController
         $root?->appendChild($error);
 
         $xmlContent = $xml->saveXML();
-        return new Response($xmlContent !== false ? $xmlContent : '', Response::HTTP_OK, [
+        if ($xmlContent === false) {
+            throw new \RuntimeException('Failed to serialize OAI-PMH XML error response.');
+        }
+
+        return new Response($xmlContent, Response::HTTP_OK, [
             'Content-Type' => self::CONTENT_TYPE_XML
         ]);
     }

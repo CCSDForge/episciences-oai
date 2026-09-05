@@ -67,7 +67,7 @@ class EpisciencesApiClientTest extends TestCase
         $this->assertSame(['mathematics', 'physics'], $result['subjects']);
 
         // Verify request and headers
-        assert(is_array($container));
+        $this->assertIsArray($container);
         $this->assertCount(1, $container);
         $request = $container[0]['request'];
         $this->assertSame('GET', $request->getMethod());
