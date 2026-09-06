@@ -32,6 +32,10 @@ To achieve maximum performance and isolate the service from the main relational 
 
 ### 1. Clone the Repository
 Clone the repository alongside the other episciences repositories:
+```bash
+git clone https://github.com/rtournoy/episciences-oai.git
+cd episciences-oai
+```
 
 ### 2. Configure Environment
 Create your local environment overrides from the templates:
@@ -71,7 +75,7 @@ make test
 # Run PHPUnit on a specific file
 make test target=tests/Controller/OaiPmhControllerTest.php
 
-# Run PHPStan static analysis (Level 6)
+# Run PHPStan static analysis (Level 9)
 make phpstan
 
 # Run PHPStan on a specific file
@@ -87,7 +91,7 @@ make cache-clear
 
 We run continuous integration using **GitHub Actions**. To ensure that your modifications do not break functionality, run tests and static analysis before pushing:
 
-*   **PHPStan** level 6 must compile with **0 errors**:
+*   **PHPStan** level 9 must compile with **0 errors**:
     ```bash
     make phpstan
     ```
@@ -104,4 +108,11 @@ The service is packaged as a lightweight Docker image built on top of [FrankenPH
 - The deployment is defined in the [docker-compose.yml](./docker-compose.yml) file.
 - It hooks into the shared Traefik instance from [episciences-infrastructure](../episciences-infrastructure) and exposes the endpoint domain `oaing-dev.episciences.org` (in development) or `oai.episciences.org` (in production).
 - Production build configures PHP Opcache, preloading, and non-debug runtime optimizations.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a detailed list of changes and release history.
+
 
